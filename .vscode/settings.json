@@ -1,3 +1,4 @@
 {
-  "markdown.preview.securityLevel": "allowInsecureContent"
+  "markdown.preview.securityLevel": "disable",
+  "markdown.preview.breaks": true
 }

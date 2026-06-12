@@ -4,29 +4,30 @@ A machine learning system that predicts the probability of credit card default a
 
 ## Overview
 
-This project implements an end-to-end credit risk scoring pipeline using the [UCI Credit Card Default dataset](https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients) (30,000 clients, 24 features). The workflow covers data preprocessing, feature engineering, model training, score calibration, risk banding, and model interpretability via SHAP.
+This project implements an end-to-end credit risk scoring pipeline using the [UCI Credit Card Default dataset](https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients) (30,000 clients, 24 features). The workflow covers data preprocessing, feature engineering, model training, score calibration, risk banding, model interpretability via SHAP, and an interactive Streamlit dashboard for live scoring.
 
 **Target variable:** `default` — binary flag (1 = default next month, 0 = no default)
 
 ## Pipeline Architecture
 
-![Credit Risk Scoring Pipeline Architecture](./reports/pipeline_architecture.png)
+![Credit Risk Scoring Pipeline Architecture](images/pipeline_architecture.png)
 
 ```
 Data Ingestion → Preprocessing → Feature Engineering → Model Training
-       → Validation → Score Calibration & Banding → Decision Engine
+       → Validation → Score Calibration & Banding → Decision Engine → Dashboard
 ```
 
 | Stage | What it does |
 |---|---|
 | **Data Ingestion** | Load UCI Credit Card dataset from `data/raw/` |
 | **Preprocessing** | Handle missing values, scale numeric features with `StandardScaler` |
-| **Feature Engineering** | Derive payment ratios, utilization, delinquency signals |
+| **Feature Engineering** | Derive utilization, bill totals, and delinquency signals |
 | **Model Training** | Train Logistic Regression, Random Forest, and XGBoost classifiers |
 | **Validation** | Evaluate with ROC-AUC, classification report, confusion matrix |
 | **Score Calibration** | Map default probability → credit score (300–900) |
 | **Risk Banding** | Assign risk categories for decision routing |
 | **Interpretability** | Feature importance and SHAP summary plots |
+| **Deployment** | Interactive Streamlit dashboard with live scoring |
 
 ## Model Results
 
@@ -43,17 +44,14 @@ XGBoost achieved the best discriminatory power and was selected as the productio
 
 ## Feature Engineering
 
-Engineered features from raw bureau and repayment data:
+The production XGBoost model uses 23 raw features plus 4 engineered features:
 
 | Feature | Description |
 |---|---|
 | `TOTAL_BILL` | Sum of bill amounts across 6 months |
 | `TOTAL_PAYMENT` | Sum of payment amounts across 6 months |
-| `PAYMENT_RATIO` | Ratio of total payments to total bills |
-| `CREDIT_AVAILABLE` | Remaining credit headroom (`LIMIT_BAL - TOTAL_BILL`) |
 | `UTILIZATION_RATIO` | Credit utilization (`TOTAL_BILL / LIMIT_BAL`) |
-| `PAYMENT_DEFICIT` | Unpaid balance (`TOTAL_BILL - TOTAL_PAYMENT`) |
-| `AVG_DELAY` | Average repayment delay across 6 months |
+| `AVG_DELAY` | Average repayment delay across 6 months (`PAY_0`–`PAY_6`) |
 
 ## Score Calibration & Risk Bands
 
@@ -70,30 +68,54 @@ Credit Score = 850 − (default_probability × 550)
 | 600 – 699 | Medium Risk | Manual review |
 | < 600 | High Risk | Auto-decline |
 
+Thresholds are adjustable in the dashboard sidebar for interactive what-if analysis.
+
 ## Visualizations & Model Interpretability
 
 ### Feature Importance (XGBoost)
 
 `PAY_0` (most recent repayment status) is the dominant predictor, followed by `AVG_DELAY` and historical payment behavior (`PAY_2`, `PAY_3`).
 
-![XGBoost Feature Importance](./reports/feature_importance.png)
+![XGBoost Feature Importance](images/feature_importance.png)
 
 ### SHAP Summary
 
 SHAP values show how each feature pushes predictions toward default or non-default. Red (high feature value) and blue (low feature value) indicate direction and magnitude of impact.
 
-![SHAP Summary Plot](./reports/shap_summary.png)
+![SHAP Summary Plot](images/shap_summary.png)
 
 ### Credit Score Distribution
 
 Calibrated scores are left-skewed — most applicants cluster in the 750–850 range, with a smaller high-risk tail below 600.
 
-![Credit Score Distribution](./reports/credit_score_distribution.png)
+![Credit Score Distribution](images/credit_score_distribution.png)
+
+## Interactive Dashboard
+
+Launch the Streamlit app for real-time credit scoring and portfolio analysis:
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+| Page | Description |
+|---|---|
+| **Live Scoring** | Instant score updates as you adjust sliders — Plotly gauge, bill vs payment chart, scenario save |
+| **What-If Analysis** | Sensitivity curves for key variables (`PAY_0`, `LIMIT_BAL`, `AGE`, etc.) |
+| **Compare Scenarios** | Side-by-side comparison of two saved applicant profiles |
+| **Batch Scoring** | Upload CSV or score sample data with interactive filters and download |
+| **Portfolio Analytics** | Risk band drill-down, utilization scatter, default rate by band |
+| **Model Insights** | ROC-AUC comparison, decision funnel simulator, training plots |
+
+**Sidebar controls:** adjustable auto-approve and manual-review score thresholds that update decisions across all pages in real time.
 
 ## Project Structure
 
 ```
 Credit-Risk-Scoring-Model/
+├── app/
+│   ├── streamlit_app.py             # Interactive dashboard
+│   └── scoring.py                   # Model loading, feature engineering, scoring API
 ├── data/
 │   └── raw/
 │       └── UCI_Credit_Card.csv      # Source dataset
@@ -101,15 +123,17 @@ Credit-Risk-Scoring-Model/
 │   └── Credit_Risk_Model.ipynb      # End-to-end training notebook
 ├── models/
 │   ├── credit_risk_model.pkl        # Trained XGBoost model
-│   └── scaler.pkl                   # Fitted StandardScaler
-├── reports/
+│   └── scaler.pkl                   # Fitted StandardScaler (for LR models)
+├── images/                          # README documentation images
 │   ├── pipeline_architecture.png
 │   ├── feature_importance.png
 │   ├── shap_summary.png
 │   └── credit_score_distribution.png
-├── app/
-│   ├── streamlit_app.py             # Streamlit dashboard
-│   └── scoring.py                   # Scoring utilities
+├── reports/                         # Generated during notebook training
+│   ├── pipeline_architecture.png
+│   ├── feature_importance.png
+│   ├── shap_summary.png
+│   └── credit_score_distribution.png
 ├── requirements.txt
 └── README.md
 ```
@@ -145,23 +169,34 @@ The notebook will:
 streamlit run app/streamlit_app.py
 ```
 
-The dashboard includes:
-- **Score Applicant** — interactive form with live credit score and decision
-- **Batch Scoring** — upload CSV or score sample records in bulk
-- **Model Insights** — ROC-AUC comparison and interpretability plots
-- **Portfolio Analytics** — risk band and default rate analysis
-
-### 4. Load the trained model
+### 4. Score programmatically
 
 ```python
-import joblib
+import sys
+sys.path.insert(0, "app")
 
-model = joblib.load("models/credit_risk_model.pkl")
-scaler = joblib.load("models/scaler.pkl")
+from scoring import load_model, build_feature_row, predict_with_thresholds
 
-# Predict default probability
-prob = model.predict_proba(scaled_features)[:, 1]
-credit_score = int(850 - prob * 550)
+model = load_model()
+
+applicant = {
+    "LIMIT_BAL": 140_000,
+    "SEX": 1,
+    "EDUCATION": 2,
+    "MARRIAGE": 2,
+    "AGE": 35,
+    "PAY_0": 0, "PAY_2": 0, "PAY_3": 0, "PAY_4": 0, "PAY_5": 0, "PAY_6": 0,
+    "BILL_AMT1": 12_000, "BILL_AMT2": 11_500, "BILL_AMT3": 10_800,
+    "BILL_AMT4": 9_200, "BILL_AMT5": 8_700, "BILL_AMT6": 7_900,
+    "PAY_AMT1": 3_000, "PAY_AMT2": 2_800, "PAY_AMT3": 2_500,
+    "PAY_AMT4": 2_200, "PAY_AMT5": 2_000, "PAY_AMT6": 1_800,
+}
+
+features = build_feature_row(applicant)
+result = predict_with_thresholds(model, features, approve_min=700, review_min=600)
+
+print(result)
+# {'default_probability': 0.12, 'credit_score': 784, 'risk_category': 'Low Risk', 'decision': 'Auto-Approve'}
 ```
 
 ## Tech Stack
@@ -170,11 +205,13 @@ credit_score = int(850 - prob * 550)
 |---|---|
 | pandas / numpy | Data manipulation |
 | scikit-learn | Preprocessing, Logistic Regression, Random Forest |
-| XGBoost | Gradient boosting classifier |
+| XGBoost | Production gradient boosting classifier |
 | imbalanced-learn | SMOTE for class imbalance |
 | SHAP | Model explainability |
-| matplotlib / seaborn | Visualization |
-| Jupyter | Interactive development |
+| Streamlit | Interactive dashboard |
+| Plotly | Interactive charts and gauges |
+| matplotlib / seaborn | Static plots in notebook |
+| Jupyter | Model development and training |
 
 ## Dataset
 
@@ -188,7 +225,7 @@ credit_score = int(850 - prob * 550)
 ## Future Work
 
 - [ ] FastAPI REST endpoint for real-time scoring
-- [x] Streamlit dashboard for interactive what-if analysis
+- [x] Streamlit dashboard with live scoring and what-if analysis
 - [ ] KS statistic, Gini coefficient, and PSI monitoring
 - [ ] Out-of-time validation split
 - [ ] Scheduled retraining on score drift alerts
@@ -196,5 +233,3 @@ credit_score = int(850 - prob * 550)
 ## License
 
 This project is for educational and portfolio purposes. The UCI dataset is publicly available for research use.
-# Credit-Risk-Scoring-Model
-# Credit-Risk-Scoring-Model
